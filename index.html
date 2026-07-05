@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nonaxamine — Аниме онлайн</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="header">
+    <div class="logo">NONAX<span>AMINE</span></div>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Поиск аниме..." autocomplete="off">
+      <button id="searchBtn">Найти</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Статус поиска / ошибки -->
+    <div id="status" class="status hidden"></div>
+
+    <!-- Результаты поиска -->
+    <section id="results" class="results hidden">
+      <h2>Результаты поиска</h2>
+      <div id="resultsGrid" class="grid"></div>
+    </section>
+    <!-- Плеер -->
+    <section id="playerSection" class="player-section hidden">
+      <button id="backBtn" class="back-btn">← Назад к результатам</button>
+
+      <div class="player-layout">
+        <div class="player-wrap">
+          <video id="video" controls playsinline></video>
+          <div id="playerStatus" class="player-status hidden"></div>
+        </div>
+
+        <div class="episodes-panel">
+          <h3 id="releaseTitle"></h3>
+          <div id="episodesList" class="episodes-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
