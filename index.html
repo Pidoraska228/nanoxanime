@@ -20,6 +20,31 @@
     <!-- Статус поиска / ошибки -->
     <div id="status" class="status hidden"></div>
 
+    <!-- Главная: Популярное / Новинки / Случайное -->
+    <div id="homeSections">
+      <section class="home-block">
+        <div class="home-block-head">
+          <h2>🔥 Популярное</h2>
+        </div>
+        <div id="popularGrid" class="grid"></div>
+      </section>
+
+      <section class="home-block">
+        <div class="home-block-head">
+          <h2>🆕 Новинки</h2>
+        </div>
+        <div id="newGrid" class="grid"></div>
+      </section>
+
+      <section class="home-block">
+        <div class="home-block-head">
+          <h2>🎲 Случайное аниме</h2>
+          <button id="shuffleBtn" class="shuffle-btn">Другое</button>
+        </div>
+        <div id="randomGrid" class="grid grid-single"></div>
+      </section>
+    </div>
+
     <!-- Результаты поиска -->
     <section id="results" class="results hidden">
       <h2>Результаты поиска</h2>
@@ -27,7 +52,7 @@
     </section>
     <!-- Плеер -->
     <section id="playerSection" class="player-section hidden">
-      <button id="backBtn" class="back-btn">← Назад к результатам</button>
+      <button id="backBtn" class="back-btn">← Назад</button>
 
       <div class="player-layout">
         <div class="player-wrap">
