@@ -62,7 +62,21 @@ function findTitleTranslation(query) {
 }
 
 const searchInput = document.getElementById('searchInput');
+
+const infoBtn = document.getElementById('infoBtn');
+const infoModal = document.getElementById('infoModal');
+const infoCloseBtn = document.getElementById('infoCloseBtn');
+
+infoBtn.addEventListener('click', () => infoModal.classList.remove('hidden'));
+infoCloseBtn.addEventListener('click', () => infoModal.classList.add('hidden'));
+infoModal.addEventListener('click', (e) => {
+  if (e.target === infoModal) infoModal.classList.add('hidden'); // клик по фону закрывает
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') infoModal.classList.add('hidden');
+});
 const searchBtn = document.getElementById('searchBtn');
+const exactMatchToggle = document.getElementById('exactMatchToggle');
 const statusEl = document.getElementById('status');
 const resultsSection = document.getElementById('results');
 const resultsGrid = document.getElementById('resultsGrid');
@@ -73,6 +87,12 @@ const newGrid = document.getElementById('newGrid');
 const randomGrid = document.getElementById('randomGrid');
 const shuffleBtn = document.getElementById('shuffleBtn');
 
+const genreNav = document.getElementById('genreNav');
+const genreResultsSection = document.getElementById('genreResults');
+const genreGrid = document.getElementById('genreGrid');
+const genreResultsTitle = document.getElementById('genreResultsTitle');
+const genreBackBtn = document.getElementById('genreBackBtn');
+
 const playerSection = document.getElementById('playerSection');
 const backBtn = document.getElementById('backBtn');
 const videoEl = document.getElementById('video');
@@ -82,14 +102,24 @@ const episodesListEl = document.getElementById('episodesList');
 
 let hlsInstance = null;
 let catalogPool = []; // список каталога — используем для Популярное/Новинки/Случайное
+let genresMap = new Map(); // id -> name, собираем из реальных данных релизов
+let selectedGenreIds = new Set(); // выбранные жанры для пересечения
+let genreBrowsePool = []; // кэш большого пула каталога для фильтрации по жанрам
 let previousView = 'home';
 
-// Переключение между тремя "экранами": home / results / player
+// Переключение между экранами: home / results / genre / player
 function showView(view) {
   homeSections.classList.toggle('hidden', view !== 'home');
   resultsSection.classList.toggle('hidden', view !== 'results');
+  genreResultsSection.classList.toggle('hidden', view !== 'genre');
   playerSection.classList.toggle('hidden', view !== 'player');
 }
+
+genreBackBtn.addEventListener('click', () => {
+  selectedGenreIds.clear();
+  renderGenreNav();
+  showView('home');
+});
 
 backBtn.addEventListener('click', () => {
   stopPlayback();
@@ -132,6 +162,28 @@ async function doSearch() {
       }
     }
 
+    // Дополнительно ищем среди уже загруженного полного каталога (если он успел
+    // загрузиться в фоне) — это находит вообще всё, что реально есть в базе,
+    // независимо от того, что решил вернуть капризный серверный поиск
+    if (fullCatalogPromise) {
+      try {
+        const fullCatalog = await fullCatalogPromise;
+        const localMatches = fullCatalog.filter(title => phraseMatches(title, query));
+        list = mergeUnique(list, localMatches);
+        console.log(`Локальный поиск по полному каталогу (${fullCatalog.length} тайтлов): найдено`, localMatches);
+      } catch (err) {
+        console.warn('Полный каталог ещё не загрузился или упал:', err.message);
+      }
+    }
+
+    // Режим "точные совпадения": оставляем только тайтлы, где вся фраза целиком
+    // встречается в названии — без разбивки на отдельные слова, как это делает сервер
+    if (exactMatchToggle.checked) {
+      const before = list.length;
+      list = list.filter(title => phraseMatches(title, query));
+      console.log(`Точные совпадения: было ${before}, осталось ${list.length}`);
+    }
+
     renderResults(list, query);
   } catch (err) {
     console.error('Ошибка поиска:', err);
@@ -172,7 +224,7 @@ async function searchAnilibria(query) {
   for (const host of API_HOSTS) {
     try {
       return await fetchWithTimeout(
-        `${host}/app/search/releases?query=${encodeURIComponent(query)}&limit=20`,
+        `${host}/app/search/releases?query=${encodeURIComponent(query)}&limit=50`,
         8000
       );
     } catch (err) {
@@ -226,12 +278,12 @@ async function fetchWithTimeout(url, timeoutMs) {
 // ============ Главная: Популярное / Новинки / Случайное ============
 
 // Пробуем получить список каталога — используем его как общий пул данных
-async function fetchCatalog() {
+async function fetchCatalog(page = 1, limit = 24) {
   let lastError;
 
   for (const host of API_HOSTS) {
     try {
-      return await fetchWithTimeout(`${host}/anime/catalog/releases?page=1&limit=24`, 8000);
+      return await fetchWithTimeout(`${host}/anime/catalog/releases?page=${page}&limit=${limit}`, 8000);
     } catch (err) {
       lastError = err;
       console.warn(`Хост ${host} не отдал каталог:`, err.message);
@@ -241,14 +293,59 @@ async function fetchCatalog() {
   throw lastError || new Error('Все серверы недоступны');
 }
 
+// Загружаем ВЕСЬ каталог целиком (все страницы) и кэшируем — считаем один раз за сессию.
+// Каталог AniLibria — около 1800+ тайтлов, это вполне реально скачать за несколько секунд.
+let fullCatalogPromise = null;
+
+function fetchFullCatalog() {
+  if (fullCatalogPromise) return fullCatalogPromise;
+
+  fullCatalogPromise = (async () => {
+    const first = await fetchCatalog(1, 50);
+    const firstList = extractList(first);
+    const totalPages = first?.meta?.pagination?.total_pages || 1;
+    const total = first?.meta?.pagination?.total || firstList.length;
+
+    console.log(`Полный каталог: всего ${total} тайтлов, ${totalPages} страниц. Начинаю грузить остальное...`);
+
+    const restPromises = [];
+    for (let p = 2; p <= totalPages; p++) {
+      restPromises.push(
+        fetchCatalog(p, 50).catch(err => {
+          console.warn(`Не удалось загрузить страницу ${p} каталога:`, err.message);
+          return null;
+        })
+      );
+    }
+
+    const restResults = await Promise.all(restPromises);
+
+    let combined = firstList;
+    for (const data of restResults) {
+      if (!data) continue;
+      combined = mergeUnique(combined, extractList(data));
+    }
+
+    console.log(`Полный каталог загружен: ${combined.length} тайтлов (из заявленных ${total}).`);
+
+    collectGenres(combined);
+    renderGenreNav();
+
+    // Раз каталог теперь полный — пересчитываем Популярное точнее
+    renderPopular(combined);
+
+    return combined;
+  })();
+
+  return fullCatalogPromise;
+}
+
 async function loadHomeSections() {
   try {
-    const data = await fetchCatalog();
+    const data = await fetchCatalog(1, 24);
     console.log('Сырой ответ каталога (для отладки):', data);
 
-    const list = Array.isArray(data)
-      ? data
-      : (data.data || data.list || data.items || []);
+    const list = extractList(data);
 
     if (!list.length) {
       popularGrid.innerHTML = '<p class="home-empty">Не удалось загрузить каталог — глянь консоль (F12).</p>';
@@ -256,14 +353,61 @@ async function loadHomeSections() {
     }
 
     catalogPool = list;
+    collectGenres(list);
+    renderGenreNav();
 
     renderNew(list);
     renderPopular(list);
     renderRandomPick();
+
+    // Параллельно в фоне тянем весь каталог — для полного поиска и жанров
+    fetchFullCatalog().catch(err => console.error('Не удалось загрузить полный каталог:', err));
   } catch (err) {
     console.error('Ошибка загрузки каталога:', err);
     popularGrid.innerHTML = `<p class="home-empty">Не удалось загрузить каталог: ${escapeHtml(err.message)}</p>`;
   }
+}
+
+// Собираем реальный список жанров прямо из данных релизов (id → название)
+function collectGenres(list) {
+  for (const title of list) {
+    for (const g of title.genres || []) {
+      if (g?.id !== undefined) genresMap.set(g.id, g.name);
+    }
+  }
+}
+
+function renderGenreNav() {
+  genreNav.innerHTML = '';
+
+  const sortedGenres = [...genresMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'));
+
+  for (const [id, name] of sortedGenres) {
+    const chip = document.createElement('button');
+    chip.className = 'genre-chip';
+    chip.textContent = name;
+    if (selectedGenreIds.has(id)) chip.classList.add('active');
+    chip.addEventListener('click', () => toggleGenre(id, name, chip));
+    genreNav.appendChild(chip);
+  }
+}
+
+// Переключаем жанр во множестве выбранных и пересчитываем подборку (пересечение жанров)
+function toggleGenre(id, name, chipEl) {
+  if (selectedGenreIds.has(id)) {
+    selectedGenreIds.delete(id);
+    chipEl.classList.remove('active');
+  } else {
+    selectedGenreIds.add(id);
+    chipEl.classList.add('active');
+  }
+
+  if (selectedGenreIds.size === 0) {
+    showView('home');
+    return;
+  }
+
+  applyGenreFilter();
 }
 
 function renderNew(list) {
@@ -273,9 +417,8 @@ function renderNew(list) {
 }
 
 function renderPopular(list) {
-  // Пытаемся отсортировать по любому найденному "популярностному" полю.
-  // Если такого поля нет в ответе — используем список как есть (см. консоль для деталей).
-  const popularityField = ['in_favorites', 'favorites_count', 'rating', 'score', 'views']
+  // Реальное поле популярности в API — added_in_users_favorites (проверено через консоль)
+  const popularityField = ['added_in_users_favorites', 'added_in_watching_collection', 'in_favorites', 'rating', 'score']
     .find(field => list[0]?.[field] !== undefined);
 
   const sorted = popularityField
@@ -297,24 +440,58 @@ function renderRandomPick() {
   randomGrid.appendChild(buildCard(pick));
 }
 
+// Показываем пересечение всех выбранных жанров сразу (аниме должно иметь ВСЕ выбранные жанры)
+async function applyGenreFilter() {
+  const names = [...selectedGenreIds].map(id => genresMap.get(id)).filter(Boolean);
+  genreResultsTitle.textContent = `Жанры: ${names.join(' + ')}`;
+  genreGrid.innerHTML = '';
+  showView('genre');
+  showStatus(`Загружаю полный каталог для точной подборки (один раз за сессию, дальше быстро)...`, 'loading');
+
+  try {
+    const pool = await fetchFullCatalog();
+
+    const filtered = pool.filter(title => {
+      const titleGenreIds = new Set((title.genres || []).map(g => g.id));
+      return [...selectedGenreIds].every(id => titleGenreIds.has(id));
+    });
+
+    console.log(`Жанры [${names.join(', ')}]: найдено ${filtered.length} из ${pool.length}`, filtered);
+
+    if (!filtered.length) {
+      showStatus(`По жанрам «${names.join(' + ')}» ничего не нашлось во всём каталоге.`, 'error');
+      return;
+    }
+
+    statusEl.classList.add('hidden');
+    filtered.forEach(title => genreGrid.appendChild(buildCard(title)));
+  } catch (err) {
+    console.error('Ошибка загрузки жанров:', err);
+    showStatus(`Не удалось загрузить подборку: ${err.message}`, 'error');
+  }
+}
+
 function renderResults(list, query) {
   console.log('Итоговый список результатов (для отладки):', list);
 
+  resultsGrid.innerHTML = '';
+  showView('results');
+
   if (!list.length) {
-    showStatus(`По запросу «${query}» ничего не найдено.`, 'error');
+    const hint = exactMatchToggle.checked
+      ? ` Попробуй выключить «Точные совпадения» — сервер мог найти что-то похожее.`
+      : '';
+    showStatus(`По запросу «${query}» ничего не найдено.${hint}`, 'error');
     return;
   }
 
   statusEl.classList.add('hidden');
-  resultsGrid.innerHTML = '';
 
   const sorted = sortByRelevance(list, query);
 
   for (const title of sorted) {
     resultsGrid.appendChild(buildCard(title));
   }
-
-  showView('results');
 }
 
 // Достаём все возможные варианты названия релиза (основное, английское, альтернативные)
@@ -361,6 +538,22 @@ function relevanceScore(title, query) {
   }
 
   return best;
+}
+
+// Проверяет, встречается ли запрос целиком (как фраза, без разбивки на слова)
+// в каком-либо из названий тайтла
+function phraseMatches(title, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const variants = [q];
+  const translated = findTitleTranslation(query);
+  if (translated) variants.push(translated);
+
+  return getAllNames(title).some(raw => {
+    const n = raw.toLowerCase();
+    return variants.some(v => n.includes(v));
+  });
 }
 
 function escapeRegex(str) {
@@ -431,7 +624,14 @@ async function openPlayer(title, displayName) {
   }
 
   // Запоминаем откуда пришли — home или results — чтобы кнопка "Назад" вернула туда же
-  previousView = homeSections.classList.contains('hidden') ? 'results' : 'home';
+  // Запоминаем откуда пришли — home / results / genre — чтобы "Назад" вернул туда же
+  if (!homeSections.classList.contains('hidden')) {
+    previousView = 'home';
+  } else if (!genreResultsSection.classList.contains('hidden')) {
+    previousView = 'genre';
+  } else {
+    previousView = 'results';
+  }
 
   showView('player');
   releaseTitleEl.textContent = displayName;
