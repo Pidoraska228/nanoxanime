@@ -12,9 +12,45 @@
     <div class="logo">NONAX<span>AMINE</span></div>
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Поиск аниме..." autocomplete="off">
+      <label class="exact-toggle">
+        <input type="checkbox" id="exactMatchToggle">
+        <span>Точные совпадения</span>
+      </label>
       <button id="searchBtn">Найти</button>
     </div>
+    <button id="infoBtn" class="info-btn" title="Почему нет некоторых тайтлов?">ℹ️</button>
   </header>
+
+  <!-- Модалка с объяснением про каталог -->
+  <div id="infoModal" class="modal-overlay hidden">
+    <div class="modal">
+      <button id="infoCloseBtn" class="modal-close">✕</button>
+      <h2>Почему тут нет некоторых тайтлов?</h2>
+      <p>
+        Этот сайт берёт данные и видео из открытого API проекта
+        <strong>AniLibria</strong> — команды энтузиастов, которая переводит
+        и озвучивает аниме бесплатно, на добровольных началах.
+      </p>
+      <p>
+        Из-за этого в каталоге около <strong>1800+ тайтлов</strong>, но
+        далеко не все существующие аниме — команда физически не успевает
+        охватить всё. Особенно часто отсутствуют:
+      </p>
+      <ul>
+        <li>Очень длинные сериалы (сотни и тысячи серий) — например,
+          <strong>One Piece</strong> пока не в их каталоге</li>
+        <li>Совсем свежие или нишевые тайтлы, до которых ещё не дошли руки</li>
+        <li>Тайтлы, заблокированные по правообладательским причинам</li>
+      </ul>
+      <p>
+        Если что-то не находится — это не баг поиска, а действительно
+        пробел в исходных данных. Решить это можно только подключив
+        дополнительный источник контента.
+      </p>
+    </div>
+  </div>
+
+  <nav id="genreNav" class="genre-nav"></nav>
 
   <main>
     <!-- Статус поиска / ошибки -->
@@ -50,6 +86,14 @@
       <h2>Результаты поиска</h2>
       <div id="resultsGrid" class="grid"></div>
     </section>
+
+    <!-- Аниме по жанру -->
+    <section id="genreResults" class="results hidden">
+      <button id="genreBackBtn" class="back-btn">← Назад</button>
+      <h2 id="genreResultsTitle"></h2>
+      <div id="genreGrid" class="grid"></div>
+    </section>
+
     <!-- Плеер -->
     <section id="playerSection" class="player-section hidden">
       <button id="backBtn" class="back-btn">← Назад</button>
