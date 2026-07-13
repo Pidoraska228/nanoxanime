@@ -599,11 +599,11 @@ function buildCard(title) {
     : (title.type?.episodes ? `${title.type.episodes} эп.` : '');
 
   card.innerHTML = `
-    <img src="${posterUrl}" alt="${escapeHtml(name)}" loading="lazy"
+    <img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(name)}" loading="lazy"
          onerror="this.style.opacity=0.3">
     <div class="card-info">
       <div class="card-title">${escapeHtml(name)}</div>
-      <div class="card-meta">${year} ${episodes ? '· ' + episodes : ''}</div>
+      <div class="card-meta">${escapeHtml(String(year))} ${episodes ? '· ' + escapeHtml(episodes) : ''}</div>
     </div>
   `;
 
@@ -694,9 +694,10 @@ function renderEpisodesList(episodesArr) {
 
   episodesArr.forEach((ep, index) => {
     const num = ep.episode ?? ep.ordinal ?? ep.serie ?? (index + 1);
+    const epName = ep.name ? escapeHtml(ep.name) : `Серия ${num}`;
     const btn = document.createElement('button');
     btn.className = 'episode-btn';
-    btn.innerHTML = `<span class="episode-num">${num}</span><span>${ep.name || 'Серия ' + num}</span>`;
+    btn.innerHTML = `<span class="episode-num">${num}</span><span>${epName}</span>`;
     btn.addEventListener('click', () => {
       document.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
